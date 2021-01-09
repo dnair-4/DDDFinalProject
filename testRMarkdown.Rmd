@@ -1,0 +1,140 @@
+---
+title: "highEdDataMarkdown"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## My Data
+The data used for this project is taken from the following [IPUM's Higher Education Surveys](https://highered.ipums.org/highered/): the National Survey of College Graduates (NSCG), Survey of Doctorate Recipients (SDR), and the National Survey of Recent College Graduates (NSRCG). The variables extracted are related to demographic information, education and family information, and citizen satisfaction. 
+I chose this data to dive deeper into how demographics play a role in higher education, as well as how strongly degree level affects satisfaction in later life. The variables I chose in IPUMS enable me to compare data between different demographics to see potential correlations.
+This data is from 2013, which is the most recent data collected from the above surveys.
+Formal Citation: Minnesota Population Center. IPUMS Higher Ed: Version 1.0 [dataset]. Minneapolis, MN: University of Minnesota, 2016.
+https://doi.org/10.18128/D100.V1.0
+
+## Downloading Data
+Data was downloaded from IPUMS as a zipped CSV file. Data was downloaded on 1/5/2021.
+```{r downloadingData}
+library (readr)
+originalData <- read_csv("/Users/divyanair/Desktop/DDD-I21/highered_00001.csv.gz")
+```
+``` {r loadingPackages , include=FALSE}
+library(tidyverse)
+library (magrittr)
+```
+## Questions this data can answer
+Does level of education impact job satisfaction?
+Are there correlations between job satisfaction, salary satisfaction, and satisfaction with how work contributes to society?
+Are there racial and gender imbalances in higher education?
+Does the number of children in a household correlate to education level?
+Does citizenship status impact education level and job/salary/societal satisfaction?
+
+### Data Key
+Gender: 1 = Female, 2 = Male,
+Race/Ethnicity: 1 = Asian, 2 = White, 3 = Under-represented minority, 4 = other,
+Citizenship: 0 = yes, 1 = no,
+Degree: 1 = BA, 2 = MA, 3 = Doctorate, 4 = Professional,
+All Satisfaction Columns: 1 = very satisfied, 2 = satisfied, 3 = dissatisfied, 4 = very dissatisfied.
+
+## Data Cleaning Steps
+1. Determining number of variables and observations in original data
+``` {r dimension}
+print(dim(originalData))
+```
+There are 115,152 observations and 14 variables in the original dataframe.
+
+2. Rename column names
+```{r renameCols}
+highEdData <- originalData
+colnames(highEdData) <- c("personID","year","studyWeight","sampleID","surveyID","age","gender","race","citizenStatus","numberOfChildren","highestDegree","jobSatisfaction","salarySatisfaction","socialSatisfaction")
+print (colnames(highEdData))
+```
+3. Determine class and type of each column
+``` {r getClassandType}
+colClass <- lapply (highEdData, class) #gets class for all columns
+colType <- lapply (highEdData,typeof) #gets class for all columns
+classAndType <- do.call(rbind, Map(data.frame, classOfData=colClass, typeOfData=colType))
+print(classAndType)
+```
+4. Create binary flags for missing data. Missing data is denoted with 98, or a logical skip by the participant.
+```{r evaluatingNA}
+#gives a 1 for people who didn't respond/have no children
+highEdData$naChildren <- ifelse(highEdData$numberOfChildren == 98,1,0) 
+#gives a 1 for people who didn't respond
+highEdData$naJobSat <- ifelse(highEdData$jobSatisfaction == 98,1,0) 
+#gives a 1 for people who didn't respond/ may be undocumented
+highEdData$naCitizenship <- ifelse(highEdData$citizenStatus == 98,1,0) 
+#gives a 1 for people who didn't respond
+highEdData$naSalarySat <- ifelse(highEdData$salarySatisfaction == 98,1,0) 
+#gives a 1 for people who didn't respond
+highEdData$naSocialSat <- ifelse(highEdData$socialSatisfaction == 98,1,0) 
+```
+5. Removing observations with no response for certain variables.
+``` {r creatingCleanedData}
+cleanedData <- highEdData[!(highEdData$naChildren == 1 | 
+                              highEdData$naJobSat == 1 | 
+                              highEdData$naCitizenship == 1 | 
+                              highEdData$naSalarySat == 1 | 
+                              highEdData$naSocialSat == 1),]
+print(length(rownames(originalData))-length(rownames(cleanedData)))
+```
+71,823 rows were dropped. Since this is a significant amount, the fully cleaned dataset will be used as sparingly as possible. Instead, dataframes of relevant extracted variables will be cleaned separately to include as much data as possible to draw more accurate conclusions.
+
+## Using data to determine relationships between variables
+Since the necessary variables for the following two questions (gender, highest level of education, and race) had no missing values for observations, the non-cleaned data was used to incorporate as much data as possible.
+
+### How does gender impact higher education?
+
+``` {r genderAndDegreeAnalysis , hide}
+#extracting gender and highest degree data from overall dataframe
+genderAndDegree <- highEdData %>% 
+  dplyr::select(gender , highestDegree) %>% 
+  dplyr::arrange(gender)
+femaleDegree <- genderAndDegree[genderAndDegree$gender == 1, ] #subsects gender data for only females
+avgFemDegree <- mean(femaleDegree$highestDegree) #average degree is 1.942707. Rounded to 2, females have a Masters Degree as highest degree on average
+maleDegree <- genderAndDegree[genderAndDegree$gender == 2, ] 
+avgMaleDegree <- mean(maleDegree$highestDegree) #average degree is 2.007282, which is higher than that of females. Rounded to 2, males have a Masters Degree as highest degree on average.
+
+#creating new dataframes with degree breakdown by gender
+femDegreeBreakdown <- femaleDegree %>% 
+  dplyr::group_by(gender,highestDegree) %>% 
+  dplyr::summarise(breakdown = n()) %>% 
+  dplyr::mutate(percentDegree = breakdown / sum(breakdown))
+maleDegreeBreakdown <- maleDegree %>% 
+  dplyr::group_by(gender,highestDegree) %>% 
+  dplyr::summarise(breakdown = n()) %>% 
+  dplyr::mutate(percentDegree = breakdown / sum(breakdown))
+print(femDegreeBreakdown)
+print(maleDegreeBreakdown)
+```
+Findings: On average, males have obtained a higher degree level than females. Males and females have similar percentage of Professional degrees, males have a significantly higher percentage of Doctorate Degrees, females have significantly higher percentage of Masters, and both sexes have a relatively similar percentage of BAs.
+
+### How does race impact higher education?
+``` {r raceAndDegreeAnalysis , hide}
+#Race and Highest Degree
+raceAndDegree <- highEdData %>% 
+  dplyr::select(race , highestDegree) %>% 
+  dplyr::arrange(race)
+asianDegree <- raceAndDegree[raceAndDegree$race == 1, ]
+avgAsianDegree <- mean(asianDegree$highestDegree) #average Asian degree: 2.069207
+whiteDegree <- raceAndDegree[raceAndDegree$race == 2, ]
+avgWhiteDegree <- mean(whiteDegree$highestDegree) #average Asian degree: 1.991291
+underRepMinDegree <- raceAndDegree[raceAndDegree$race == 3, ]
+avgUnderRepMinDegree <- mean(underRepMinDegree$highestDegree) #average underepresented minority degree: 1.86711
+asianBreakdown <- asianDegree %>% 
+  dplyr::group_by(race,highestDegree) %>% 
+  dplyr::summarise(breakdown = n()) %>% 
+  dplyr::mutate(percentDegree = breakdown / sum(breakdown))
+whiteBreakdown <- whiteDegree %>% 
+  dplyr::group_by(race,highestDegree) %>% 
+  dplyr::summarise(breakdown = n()) %>% 
+  dplyr::mutate(percentDegree = breakdown / sum(breakdown))
+underRepMinBreakdown <- underRepMinDegree %>% 
+  dplyr::group_by(race,highestDegree) %>% 
+  dplyr::summarise(breakdown = n()) %>% 
+  dplyr::mutate(percentDegree = breakdown / sum(breakdown))
+```
+(Findings for the above data will best be represented by a table and/or graph)
+(To come later: impact of citizenship status and degree level on job, salary, and social satisfaction)
